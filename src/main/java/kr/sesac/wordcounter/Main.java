@@ -3,6 +3,7 @@ package kr.sesac.wordcounter;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,6 +81,12 @@ public class Main {
         //processTsv(input, wordCount);
         //processHtml(input, wordCount);
 
+        Path lastInput = null;
+        long lastTotalWords = 0;
+        int lastUniqueWords = 0;
+        double lastElapsedMillis = 0;
+        boolean analyzed = false;
+
         while (true) {
             System.out.println("문서 단어 분석기");
             System.out.println("1. 새 분석 시작");
@@ -96,11 +103,20 @@ public class Main {
                 System.out.println("프로그램을 종료합니다.");
                 break;
             } else if (choice.equals("1")) {
-                // TODO: 여기서 나중에 경로 입력받고 processHtml 등을 부르게 됨
-                System.out.print("파일 또는 폴더 경로 > ");
-                String pathInput = scanner.nextLine();
-                Path input = Path.of(pathInput);
-
+                Path input;
+                while (true) {
+                    System.out.print("파일 또는 폴더 경로 > ");
+                    input = Path.of(scanner.nextLine());
+                    if (!Files.exists(input)) {
+                        System.out.println("경로를 찾을 수 없습니다: " + input);
+                        continue;
+                    }
+                    if (Files.isRegularFile(input) && !isSupported(input)) {
+                        System.out.println("지원하지 않는 형식입니다. 지원 확장자: .txt .csv .tsv .html .htm");
+                        continue;
+                    }
+                    break;
+                }
                 wordCount.clear();
 
                 long start = System.nanoTime();
@@ -126,13 +142,19 @@ public class Main {
                 long end = System.nanoTime();
                 double elapsedMillis = (end - start) / 1_000_000.0;
 
-                System.out.println();
-                System.out.println("분석 완료");
-                System.out.println("입력: " + input);
-                System.out.println("파일: 시도 " + "개 / 성공 " + "개 / 실패 " + "개 / 지원하지 않아 건너뜀 " + "개");
-                System.out.println("전체 단어: " + totalWords + "개 / 서로 다른 단어: " + wordCount.size() + "개");
-                System.out.println("처리 시간: " + elapsedMillis + "ms");
+                lastInput = input;
+                lastTotalWords = totalWords;
+                lastUniqueWords = wordCount.size();
+                lastElapsedMillis = elapsedMillis;
+                analyzed = true;
+
+                printSummary(input, totalWords, wordCount.size(), elapsedMillis);
             } else if (choice.equals("2")) {
+                if (!analyzed) {
+                    System.out.println("먼저 분석을 실행하세요.");
+                    continue;
+                }
+
                 int n = 10;
 
                 while (true) {
@@ -169,6 +191,11 @@ public class Main {
                 }
 
             } else if (choice.equals("3")) {
+                if (!analyzed) {
+                    System.out.println("먼저 분석을 실행하세요.");
+                    continue;
+                }
+
                 while(true) {
                     System.out.print("찾을 단어 > ");
                     String word = scanner.nextLine();
@@ -180,7 +207,7 @@ public class Main {
                         tokenCount += count;
                     }
                     if(tokenCount != 1) { //temp.size() != 1로 처음 시도 후 토큰 수로 변경
-                        System.out.println("단어 하나를 입력하세요");
+                        System.out.println("단어 하나를 입력하세요.");
                         continue;
                     } else {
                         String key = temp.keySet().iterator().next();
@@ -190,6 +217,11 @@ public class Main {
                 }
 
             } else if (choice.equals("4")) {
+                if (!analyzed) {
+                    System.out.println("먼저 분석을 실행하세요.");
+                    continue;
+                }
+
                 List<Map.Entry<String, Long>> entries = new ArrayList<>(wordCount.entrySet());
 
                 entries.sort((entry1, entry2) -> {
@@ -215,7 +247,11 @@ public class Main {
                 }
 
             } else if (choice.equals("5")) {
-                System.out.println();
+                if (!analyzed) {
+                    System.out.println("먼저 분석을 실행하세요.");
+                } else {
+                    printSummary(lastInput, lastTotalWords, lastUniqueWords, lastElapsedMillis);
+                }
             } else {
                 System.out.println("메뉴 번호를 0~5 중에서 입력하세요.");
             }
@@ -224,6 +260,38 @@ public class Main {
         /*for (Map.Entry<String, Long> entry : wordCount.entrySet()) {
             System.out.println(entry.getKey() + " : " + entry.getValue());
         }*/
+    }
+
+    private static boolean isSupported(Path path) {
+        String name = path.toString().toLowerCase(Locale.ROOT);
+        return name.endsWith(".txt") || name.endsWith(".csv") || name.endsWith(".tsv") || name.endsWith(".html") || name.endsWith(".htm");
+    }
+
+    private static void printSummary(Path input, long totalWords, int uniqueWords, double elapsedMillis) {
+        System.out.println();
+        System.out.println("분석 완료");
+        System.out.println("입력: " + input);
+        System.out.println("전체 단어: " + totalWords + "개 / 서로 다른 단어: " + uniqueWords + "개");
+        System.out.println("처리 시간: " + elapsedMillis + "ms");
+    }
+
+    private static boolean processFile(Path file, Map<String, Long> total) {
+        Map<String, Long> fileCount = new HashMap<>();
+        String name = file.toString().toLowerCase(Locale.ROOT);
+        try {
+            if (name.endsWith(".txt")) processTxt(file, fileCount);
+            else if (name.endsWith(".csv")) processCsv(file, fileCount);
+            else if (name.endsWith(".tsv")) processTsv(file, fileCount);
+            else processHtml(file, fileCount);
+        } catch (IOException | UncheckedIOException | IllegalArgumentException e) {
+            System.out.println("실패: " + file + " (" + e.getMessage() + ")");
+            return false;
+        }
+
+        for (Map.Entry<String, Long> e : fileCount.entrySet()) {
+            total.merge(e.getKey(), e.getValue(), Long::sum);
+        }
+        return true;
     }
 
     private static void processTxt(Path input, Map<String, Long> wordCount) throws IOException{
@@ -259,6 +327,9 @@ public class Main {
         try (var reader = Files.newBufferedReader(input, StandardCharsets.UTF_8);
              CSVParser parser = format.parse(reader)) {
             for (CSVRecord record : parser) {
+                if (!record.isConsistent()) { //레코드 셀 수가 헤더와 같은지 알려주는 Commons CSV 메서드!!
+                    throw new IOException("레코드의 셀 수가 헤더와 다릅니다");
+                }
                 String cell = record.get("text");
                 if (!cell.isBlank()){
                     countWords(cell, wordCount);
@@ -278,6 +349,9 @@ public class Main {
         try (var reader = Files.newBufferedReader(input, StandardCharsets.UTF_8);
              CSVParser parser = format.parse(reader)) {
             for (CSVRecord record : parser) {
+                if (!record.isConsistent()) {
+                    throw new IOException("레코드의 셀 수가 헤더와 다릅니다");
+                }
                 String cell = record.get("document");
                 if (!cell.isBlank()){
                     countWords(cell, wordCount);
