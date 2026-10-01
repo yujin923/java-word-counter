@@ -104,6 +104,9 @@ public class Main {
                 break;
             } else if (choice.equals("1")) {
                 Path input;
+                List<Path> targets = new ArrayList<>();
+                int skipped = 0;
+
                 while (true) {
                     System.out.print("파일 또는 폴더 경로 > ");
                     input = Path.of(scanner.nextLine());
@@ -115,30 +118,47 @@ public class Main {
                         System.out.println("지원하지 않는 형식입니다. 지원 확장자: .txt .csv .tsv .html .htm");
                         continue;
                     }
+
+                    targets.clear();
+                    skipped = 0;
+
+                    if (Files.isDirectory(input)) {
+                        try (var stream = Files.list(input)) {
+                            List<Path> files = stream.filter(Files::isRegularFile).sorted().toList();
+                            for (Path p : files) {
+                                if (isSupported(p)) {
+                                    targets.add(p);
+                                } else {
+                                    skipped++;
+                                }
+                            }
+                        } catch (IOException e) {
+                            System.out.println("폴더를 읽는 중 오류가 발생했습니다: " + e.getMessage());
+                            continue;
+                        }
+                        if (targets.isEmpty()) {
+                            System.out.println("폴더에 지원하는 파일이 없습니다.");
+                            continue;
+                        }
+                    } else {
+                        targets.add(input);
+                    }
+
                     break;
                 }
+
                 wordCount.clear();
-
                 long start = System.nanoTime();
-                String fileName = input.toString().toLowerCase(Locale.ROOT);
 
-                if (fileName.endsWith(".txt")) { //AI를 통해 endswith 문자열메서드를 알게됨
-                    processTxt(input, wordCount);
-                } else if (fileName.endsWith(".csv")) {
-                    processCsv(input, wordCount);
-                } else if (fileName.endsWith(".tsv")) {
-                    processTsv(input, wordCount);
-                } else if (fileName.endsWith(".html") || fileName.endsWith(".htm")) {
-                    processHtml(input, wordCount);
-                } else {
-                    System.out.println("지원하지 않는 파일 형식입니다.");
+                int success = 0, fail = 0;
+                for (Path p : targets) {
+                    if (processFile(p, wordCount)) success++; else fail++;
                 }
 
                 long totalWords = 0;
                 for (long count : wordCount.values()) {
                     totalWords += count;
                 }
-
                 long end = System.nanoTime();
                 double elapsedMillis = (end - start) / 1_000_000.0;
 
@@ -146,9 +166,12 @@ public class Main {
                 lastTotalWords = totalWords;
                 lastUniqueWords = wordCount.size();
                 lastElapsedMillis = elapsedMillis;
-                analyzed = true;
+                analyzed = success > 0;
 
+                System.out.println();
+                System.out.println("파일: 시도 " + targets.size() + "개 / 성공 " + success + "개 / 실패 " + fail + "개 / 지원하지 않아 건너뜀 " + skipped + "개");
                 printSummary(input, totalWords, wordCount.size(), elapsedMillis);
+
             } else if (choice.equals("2")) {
                 if (!analyzed) {
                     System.out.println("먼저 분석을 실행하세요.");
