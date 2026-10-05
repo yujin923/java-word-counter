@@ -50,47 +50,102 @@ public class FileProcessor {
         }
     }
 
-    private static void processCsv(Path input, Map<String, Long> wordCount) throws IOException {
-        var format = CSVFormat.RFC4180.builder()
-                .setHeader()
-                .setSkipHeaderRecord(true)
-                .get();
+    /*
+     * 문제점 : CSV와 TSV의 파일 처리 코드가 중복되어 있음.
+     * 원인 : 구분자와 분석 대상 열만 다른데도
+     *        각각 별도의 처리 로직을 구현함.
+     * 수정자 : 원대호
+     */
+    private static void processCsv(
+            Path input,
+            Map<String, Long> wordCount
+    ) throws IOException {
 
-        try (var reader = Files.newBufferedReader(input, StandardCharsets.UTF_8);
-             CSVParser parser = format.parse(reader)) {
-            for (CSVRecord record : parser) {
-                if (!record.isConsistent()) { //레코드 셀 수가 헤더와 같은지 알려주는 Commons CSV 메서드!!
-                    throw new IOException("레코드의 셀 수가 헤더와 다릅니다");
-                }
-                String cell = record.get("text");
-                if (!cell.isBlank()){
-                    WordCounter.countWords(cell, wordCount);
-                }
-            }
-        }
+        processDelimitedFile(
+                input, wordCount, ',', List.of("text"), true
+        );
     }
 
-    private static void processTsv(Path input, Map<String, Long> wordCount) throws IOException {
-        var format = CSVFormat.RFC4180.builder()
+    private static void processTsv(
+            Path input,
+            Map<String, Long> wordCount
+    ) throws IOException {
+
+        processDelimitedFile(
+                input, wordCount, '\t', List.of("document"), false
+        );
+    }
+
+    /*
+     * 문제점 : 공통 처리 로직이 없어 중복 코드가 발생하고, 필수 열이 없는 파일의 검증도 부족함.
+     * 원인 : 파일 형식별로 처리 로직을 따로 구현하고, 데이터 순회 전에 헤더를 검증하지 않음.
+     * 수정자 : 원대호
+     */
+    private static void processDelimitedFile(
+            Path input,
+            Map<String, Long> wordCount,
+            char delimiter,
+            List<String> columns,
+            boolean useQuotes
+    ) throws IOException {
+
+        var builder = CSVFormat.RFC4180.builder()
                 .setHeader()
                 .setSkipHeaderRecord(true)
-                .setDelimiter('\t')
-                .setQuote(null)
-                .get();
+                .setDelimiter(delimiter);
 
-        try (var reader = Files.newBufferedReader(input, StandardCharsets.UTF_8);
+        if (!useQuotes) {
+            builder.setQuote(null);
+        }
+
+        var format = builder.get();
+
+        try (var reader = Files.newBufferedReader(
+                input, StandardCharsets.UTF_8);
              CSVParser parser = format.parse(reader)) {
+
+            Map<String, Integer> headerMap = new HashMap<>();
+
+            for (var entry : parser.getHeaderMap().entrySet()) {
+                headerMap.put(
+                        entry.getKey().trim(),
+                        entry.getValue()
+                );
+            }
+
+            // 필수 열이 모두 존재하는지 확인
+            for (String column : columns) {
+                if (!headerMap.containsKey(column)) {
+                    throw new IOException(
+                            "필수 열이 없습니다: " + column
+                    );
+                }
+            }
+
+            // 데이터 처리
             for (CSVRecord record : parser) {
+
                 if (!record.isConsistent()) {
-                    throw new IOException("레코드의 셀 수가 헤더와 다릅니다");
+                    throw new IOException(
+                            "레코드의 셀 수가 헤더와 다릅니다"
+                    );
                 }
-                String cell = record.get("document");
-                if (!cell.isBlank()){
-                    WordCounter.countWords(cell, wordCount);
+
+                for (String column : columns) {
+                    String cell = record.get(
+                            headerMap.get(column)
+                    );
+
+                    if (!cell.isBlank()) {
+                        WordCounter.countWords(
+                                cell, wordCount
+                        );
+                    }
                 }
             }
         }
     }
+
     private static void processHtml(Path input, Map<String, Long> wordCount) throws IOException {
         Document document = Jsoup.parse(input.toFile(), "UTF-8");
         Elements matches = document.select("#content");
