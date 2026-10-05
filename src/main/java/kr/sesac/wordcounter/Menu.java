@@ -143,14 +143,7 @@ public class Menu {
                         System.out.println("1 이상의 정수를 입력하세요.");
                     }
                 }
-                List<Map.Entry<String, Long>> entries = new ArrayList<>(wordCount.entrySet());
-
-                entries.sort((entry1, entry2) -> { //AI를 통해 sort 및 compare 통한 람다식 표현 공부
-                    if (!entry1.getValue().equals(entry2.getValue())) {
-                        return Long.compare(entry2.getValue(), entry1.getValue());
-                    }
-                    return entry1.getKey().compareTo(entry2.getKey());
-                });
+                List<Map.Entry<String, Long>> entries = sortWords(wordCount);
 
                 for (int i = 0; i < Math.min(n, entries.size()); i++) {
                     System.out.println((i+1) + ". " + entries.get(i).getKey() + " : " + entries.get(i).getValue() + "회");
@@ -188,14 +181,7 @@ public class Menu {
                     continue;
                 }
 
-                List<Map.Entry<String, Long>> entries = new ArrayList<>(wordCount.entrySet());
-
-                entries.sort((entry1, entry2) -> {
-                    if (!entry1.getValue().equals(entry2.getValue())) {
-                        return Long.compare(entry2.getValue(), entry1.getValue());
-                    }
-                    return entry1.getKey().compareTo(entry2.getKey());
-                });
+                List<Map.Entry<String, Long>> entries = sortWords(wordCount);
 
                 Path output = Path.of("out/counts.tsv");
 
@@ -234,5 +220,28 @@ public class Menu {
         System.out.println("입력: " + input);
         System.out.println("전체 단어: " + totalWords + "개 / 서로 다른 단어: " + uniqueWords + "개");
         System.out.println("처리 시간: " + elapsedMillis + "ms");
+    }
+    /*
+     * 문제점 : 메뉴 2번과 4번에서 동일한 정렬 코드 중복
+     * 원인 : 공통 정렬 메서드가 없어 개별적으로 구현
+     * 수정자 : 원대호
+     */
+    private static List<Map.Entry<String, Long>> sortWords(
+            Map<String, Long> wordCount) {
+
+        List<Map.Entry<String, Long>> entries =
+                new ArrayList<>(wordCount.entrySet());
+
+        entries.sort((a, b) -> {
+            int result = Long.compare(b.getValue(), a.getValue());
+
+            if (result != 0) {
+                return result;
+            }
+
+            return a.getKey().compareTo(b.getKey());
+        });
+
+        return entries;
     }
 }

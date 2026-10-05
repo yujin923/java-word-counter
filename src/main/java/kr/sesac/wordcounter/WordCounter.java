@@ -17,8 +17,12 @@ public class WordCounter {
                 continue;
             }
 
-            long current = wordCount.getOrDefault(token, 0L);
-            wordCount.put(token, current + 1);
+            /*
+             * 문제점 : 단어의 출현 횟수를 조회하고 갱신하는 코드가 길어짐.
+             * 원인 : getOrDefault()와 put()을 사용해 직접 갱신함.
+             * 수정자 : 원대호
+             */
+            wordCount.merge(token, 1L, Long::sum);
         }
     }
 }
